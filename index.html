@@ -692,6 +692,7 @@ html.pbox-needs-login body{overflow:hidden}
 @keyframes authPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
 .rem-alarm{z-index:100050!important}
 div:has(>#esp32_ip){display:none!important}
+#camAddr{display:none!important}
 #addIpBtn,#savedNetsCard{display:none!important}
 html::before{pointer-events:none}
 </style>
@@ -1151,11 +1152,7 @@ if(!window.pboxSignedIn())document.documentElement.classList.add('pbox-needs-log
       <div class="card fade-in">
         <div class="card-title">📖 <span data-i18n="settings_intro_title">Introduction</span></div>
         <img id="settingsIntroImg" alt="Penny" style="width:100%;max-width:260px;height:auto;object-fit:contain;border-radius:14px;margin:0 auto 16px;display:block;">
-        <div style="font-size:15px;line-height:1.85;color:var(--text);text-align:left;">
-          我叫陈秄芃，名 Penny，今年11岁，来自中国北京。<br>
-          我做这个产品想了好久，一次通过看何同学的视频触发了我的灵感，<br>
-          PBOX是一个产品专门让小孩自律且爱护自己的眼睛。
-        </div>
+        <div style="font-size:15px;line-height:1.85;color:var(--text);text-align:left;"><span id="settingsIntroBody"></span></div>
       </div>
       <div class="card fade-in" style="border-color:var(--danger)" id="accountCard">
         <div class="card-title" data-i18n="acct_card_title">👤 Account</div>
@@ -2810,7 +2807,7 @@ function setLanguage(code) {
     // from a previous session (or before Reset finished reloading) would
     // show its initial letter in the avatar circle before the user types.
     if (!window.__wizKeep) { accountNickname = ''; accountAvatarURL = null; }   // keep nickname/avatar when returning via Back
-    openAccountModal(true);
+    window.__introFirstRun = true; showIntroScreen();   // Introduction (in the chosen language) comes right after Language
   }
 }
 
@@ -2932,7 +2929,7 @@ function showWelcomeSplash() {
   document.getElementById('welcomeSplashModal').classList.add('show');
   setTimeout(() => {
     document.getElementById('welcomeSplashModal').classList.remove('show');
-    showIntroScreen();
+    showSetupWizard();
   }, 5000);
 }
 function showIntroScreen() {
@@ -2940,7 +2937,7 @@ function showIntroScreen() {
 }
 function closeIntroScreen() {
   document.getElementById('introScreenModal').classList.remove('show');
-  showSetupWizard();
+  if (window.__introFirstRun) { window.__introFirstRun = false; openAccountModal(true); }   // then nickname + avatar
 }
 
 // (accountNickname / accountAvatarURL are now declared near the top of
@@ -7258,6 +7255,7 @@ document.addEventListener('keydown', e => {
     if (typeof orig !== 'function') return;
     window[name] = function () {
       if (!session()) { var m = $('camMsg'); if (m) m.textContent = am('camNeed'); showGate(); return; }
+      var ca = $('camAddr'); if (ca) ca.value = '';   // the camera always goes through the cloud now
       return orig.apply(this, arguments);
     };
   });
@@ -7267,7 +7265,7 @@ document.addEventListener('keydown', e => {
   // and every other device checks that file every few seconds and updates itself — no buttons, no dialogs.
   if (typeof SYNC_KEYS !== 'undefined' && SYNC_KEYS.indexOf('phoneboxBoxState') < 0) SYNC_KEYS.push('phoneboxBoxState');
   var PUSH_MS = 250, POLL_MS = 1500;
-  var v2 = { timer: null, busy: false, again: false, pending: null, tick: 0, needGesture: false, refreshing: null };
+  var v2 = { initializing: false, timer: null, busy: false, again: false, pending: null, tick: 0, needGesture: false, refreshing: null };
   function tokenLive() { return !!(gToken && Date.now() < gTokenExp); }
 
   function ensureToken(interactive) {
@@ -7309,8 +7307,9 @@ document.addEventListener('keydown', e => {
     clearTimeout(v2.timer); v2.timer = setTimeout(v2Push, PUSH_MS);
   };
 
-  async function v2Push() {
+  async function v2Push(force) {
     if (!session()) return;
+    if (v2.initializing && force !== true) return;
     if (v2.busy) { v2.again = true; return; }
     if (!tokenLive()) { var ok = await ensureToken(false); if (!ok) { v2.needGesture = true; return; } }
     v2.busy = true;
@@ -7345,18 +7344,54 @@ document.addEventListener('keydown', e => {
     location.reload();
   }
 
+  function stripBox(v) { try { var o = JSON.parse(v); delete o.ts; delete o.esp32_ip; return JSON.stringify(o); } catch (e) { return v; } }
+  var INPLACE = {
+    phoneboxBoxState: function () {                          // box open/closed, phone check: update the screen without refreshing
+      var s = JSON.parse(gl('phoneboxBoxState') || 'null'); if (!s) return;
+      phoneChecked = !!s.phoneChecked; boxOpenedByUser = !!s.boxOpenedByUser; phoneBoxHiddenForNight = !!s.phoneBoxHiddenForNight;
+      restoreBoxUI();
+    },
+    phoneboxSchedule: function () {                          // Time Control: times, days
+      var sc = JSON.parse(gl('phoneboxSchedule') || 'null');
+      if (!sc || !sc.start || !sc.end || !Array.isArray(sc.days)) return;
+      schedule = sc; savedDaysBackup = sc.days.slice(); pendingSchedule = null; oldScheduleBeforeChange = null;
+      setTimeSelects('startTimeHour', 'startTimeMin', sc.start); setTimeSelects('endTimeHour', 'endTimeMin', sc.end);
+      renderDayChips(); if (typeof renderSchList === 'function') renderSchList();
+      resyncAfterScheduleChange();
+    },
+    phoneboxAccount: function () {                           // nickname + avatar
+      loadAccount();
+      var g = $('greetingSquare'); if (g) delete g.dataset.variant;
+      try { updateGreeting(new Date()); } catch (e) {}
+    }
+  };
   function applyRemote(remote, rmt, id) {
-    var local = syncCollect();
-    var same = SYNC_KEYS.every(function (k) { var x = remote.data[k], y = local[k]; return (x === undefined ? null : x) === (y === undefined ? null : y); });
+    var local = syncCollect(), changed = [];
+    SYNC_KEYS.forEach(function (k) {
+      var x = remote.data[k], y = local[k]; x = (x === undefined ? null : x); y = (y === undefined ? null : y);
+      if (k === 'phoneboxBoxState') { x = x === null ? x : stripBox(x); y = y === null ? y : stripBox(y); }
+      if (x !== y) changed.push(k);
+    });
     syncMetaSet({ lastRemoteAt: remote.updatedAt || Date.now(), lastSync: Date.now(), dirty: false, dirtyAt: 0, fileId: id, rmt: rmt });
-    if (same) return false;
+    if (!changed.length) return false;
     syncApply(remote.data);
-    softReload();
-    return true;
+    var reload = changed.some(function (k) { return !INPLACE[k]; });
+    if (!reload) { try { changed.forEach(function (k) { INPLACE[k](); }); } catch (e) { reload = true; } }
+    if (reload) { softReload(); return true; }
+    return false;
+  }
+
+  function needsReload(remote) {
+    var local = syncCollect();
+    return SYNC_KEYS.some(function (k) {
+      var x = remote.data[k], y = local[k]; x = (x === undefined ? null : x); y = (y === undefined ? null : y);
+      if (k === 'phoneboxBoxState') { x = x === null ? x : stripBox(x); y = y === null ? y : stripBox(y); }
+      return x !== y && !INPLACE[k];
+    });
   }
 
   async function v2Poll() {
-    if (!session() || v2.busy) return;
+    if (!session() || v2.busy || v2.initializing) return;
     if (document.hidden && (v2.tick++ % 4)) return;           // slower while the tab is hidden
     if (v2.pending) { if (!userBusy()) { var pd = v2.pending; v2.pending = null; applyRemote(pd.remote, pd.rmt, pd.id); } return; }
     var m = syncMetaGet();
@@ -7370,7 +7405,7 @@ document.addEventListener('keydown', e => {
         var remote = await driveRead(id);
         if (syncMetaGet().dirty) return;                       // you changed something meanwhile: yours wins
         if (remote && remote.data && (remote.updatedAt || 0) > (m.lastRemoteAt || 0)) {
-          if (userBusy()) v2.pending = { remote: remote, rmt: j.modifiedTime, id: id };
+          if (userBusy() && needsReload(remote)) v2.pending = { remote: remote, rmt: j.modifiedTime, id: id };
           else applyRemote(remote, j.modifiedTime, id);
         } else { var m2 = syncMetaGet(); m2.rmt = j.modifiedTime; syncMetaSet(m2); }
       }
@@ -7379,17 +7414,23 @@ document.addEventListener('keydown', e => {
 
   // At login: make this device and the account's copy agree (newest change wins, no questions asked).
   async function v2Initial() {
-    var m = syncMetaGet(), f = await driveFind();
-    if (!f) { await v2Push(); return 'ok'; }
-    m.fileId = f.id; syncMetaSet(m);
-    var remote = await driveRead(f.id);
-    if (!remote || !remote.data) { await v2Push(); return 'ok'; }
-    var j = await (await gFetch('https://www.googleapis.com/drive/v3/files/' + f.id + '?fields=modifiedTime')).json();
-    var localNewer = m.dirty && (m.dirtyAt || 0) > (remote.updatedAt || 0);
-    if (localNewer) { await v2Push(); return 'ok'; }
-    if ((remote.updatedAt || 0) > (m.lastRemoteAt || 0) || m.dirty) return applyRemote(remote, j.modifiedTime, f.id) ? 'applied' : 'ok';
-    m.rmt = j.modifiedTime; syncMetaSet(m);
-    return 'ok';
+    v2.initializing = true;
+    try {
+      var m = syncMetaGet(), f = await driveFind();
+      if (!f) { await v2Push(true); return 'ok'; }
+      m.fileId = f.id; syncMetaSet(m);
+      var remote = await driveRead(f.id);
+      if (!remote || !remote.data) { await v2Push(true); return 'ok'; }
+      var j = await (await gFetch('https://www.googleapis.com/drive/v3/files/' + f.id + '?fields=modifiedTime')).json();
+      var localSetup = !!gl('phoneboxSetupComplete'), remoteSetup = !!remote.data.phoneboxSetupComplete;
+      // A second device: the account already exists, so take its data and skip Welcome / Wizard.
+      if (!localSetup && remoteSetup) return applyRemote(remote, j.modifiedTime, f.id) ? 'applied' : 'ok';
+      var localNewer = m.dirty && (m.dirtyAt || 0) > (remote.updatedAt || 0);
+      if (localNewer) { await v2Push(true); return 'ok'; }
+      if ((remote.updatedAt || 0) > (m.lastRemoteAt || 0) || m.dirty) return applyRemote(remote, j.modifiedTime, f.id) ? 'applied' : 'ok';
+      m.rmt = j.modifiedTime; syncMetaSet(m);
+      return 'ok';
+    } finally { v2.initializing = false; }
   }
   window.pboxSyncNow = function () { return syncMetaGet().dirty ? v2Push() : v2Poll(); };
 
@@ -7440,6 +7481,104 @@ document.addEventListener('keydown', e => {
       }, 120);
     };
     if (document.readyState === 'complete') reveal(); else window.addEventListener('load', reveal);
+  }
+
+
+  // ======================= texts: tour, manual, camera =======================
+  Object.assign(I18N.en, {
+    cam_sub: 'Live picture from the camera in your box, through your cloud. Tap Watch.',
+    tour_8: 'Settings|Change language, theme, streak goal & reward (needs PIN), replay this tour, log out or delete your account (both need your PIN).',
+    tour_cam: 'Box Camera|Tap Watch to see the live picture from the camera in your box. It goes through your cloud, so it works from any network, and only while you are logged in.',
+    tour_auth: 'Login & sync|You log in with Google and stay logged in after a refresh. A second device only needs to log in: no Welcome or Wizard. Everything you change (box state, Time Control, nickname, journal…) shows up on your other devices by itself. Log out or Delete Account are in Settings → Account (PIN needed).'
+  });
+  Object.assign(I18N.zh, {
+    cam_sub: '通过你的云端，查看盒子里摄像头的实时画面。点“查看”即可。',
+    tour_8: '设置|修改语言、主题、坚持目标与奖励（需要 PIN），重新播放导览，退出登录或删除账户（都需要 PIN）。',
+    tour_cam: '盒子摄像头|点“查看”就能看到盒子里摄像头的实时画面。画面通过你的云端传送，在任何网络下都能看，但只有登录后才能打开。',
+    tour_auth: '登录与同步|用 Google 登录，刷新后仍保持登录。第二台设备只需要登录，不用再走欢迎页和设置向导。你改的所有内容（盒子状态、时间控制、昵称、日记……）都会自动出现在其他设备上。退出登录和删除账户在 设置 → 账号（需要 PIN）。'
+  });
+  Object.assign(I18N.yue, {
+    cam_sub: '經你嘅雲端睇盒入面鏡頭嘅即時畫面。撳“睇”就得。',
+    tour_8: '設定|改語言、主題、堅持目標同獎勵（要 PIN），重新播放導覽，登出或者刪除帳戶（兩個都要 PIN）。',
+    tour_cam: '盒仔鏡頭|撳“睇”就可以睇到盒入面鏡頭嘅即時畫面。畫面經你嘅雲端傳送，喺任何網絡都睇到，但淨係登入咗先打開到。',
+    tour_auth: '登入同同步|用 Google 登入，重新整理之後仍然保持登入。第二部裝置只需要登入，唔使再行歡迎頁同設定精靈。你改嘅所有嘢（盒仔狀態、時間控制、暱稱、日記……）都會自動出現喺其他裝置。登出同刪除帳戶喺 設定 → 帳戶（要 PIN）。'
+  });
+  try {                                                       // the ESP32 IP and Add IP steps are gone
+    for (var ti = TOUR_STEPS.length - 1; ti >= 0; ti--) { if (TOUR_STEPS[ti].k === 'tour_1' || TOUR_STEPS[ti].k === 'tour_ip') TOUR_STEPS.splice(ti, 1); }
+  } catch (e) {}
+
+  function faqFind(re) { var r = []; FAQ_DATA.forEach(function (g) { g.items.forEach(function (it, idx) { if (re.test(it.q.en)) r.push({ g: g, it: it, idx: idx }); }); }); return r; }
+  function faqDrop(re) { FAQ_DATA.forEach(function (g) { g.items = g.items.filter(function (it) { return !re.test(it.q.en); }); }); }
+  function faqSet(re, q, a) { faqFind(re).forEach(function (h) { h.it.q = q || h.it.q; h.it.a = a; }); }
+  try {
+    [/ESP32 IP box in the top bar/, /reuse or remove an IP/, /Add IP/, /add a new IP address/, /change the IP address/, /saved IPs and Wi-Fi/,
+     /double-clicked file/, /share my settings and recordings between my phone and computer/, /show the Raspberry Pi camera on the page/].forEach(faqDrop);
+
+    faqSet(/^What happens the first time I open the app/,
+      { en: 'What happens the first time I open the app (Login, Welcome, Setup Wizard)?', zh: '第一次打开App会发生什么（登录、欢迎页、设置向导）？', yue: '第一次打開App會發生乜事（登入、歡迎頁、設定精靈）？' },
+      { en: 'You see Login and Sign in. Tap Sign in with your Google account, then the Welcome screen appears, then you choose a language, read Penny’s Introduction (only in the language you chose), set your nickname and avatar, pick a background, set a PIN and optionally a streak goal & reward. Use “← Back” to go back a step. The Wizard only appears the first time for an account, or after Reset or Delete Account. On a second device, just log in with the same Google account: your data arrives by itself and the Wizard is skipped.',
+        zh: '先看到“登录”和“注册（Sign in）”。第一次请用你的 Google 账号点“注册”，然后出现欢迎页，接着选择语言、阅读 Penny 的自我介绍（只显示你选的那一种语言）、设置昵称和头像、选择背景、设置 PIN 密码，再设置坚持天数和奖励（可跳过）。可以用“← 上一步”返回。设置向导只在一个账号第一次使用，或者执行重置/删除账户之后才会出现。在第二台设备上，只需用同一个 Google 账号登录，数据会自动过来，也不用再走设置向导。',
+        yue: '先睇到“登入”同“註冊（Sign in）”。第一次請用你嘅 Google 帳戶撳“註冊”，然後出現歡迎頁，跟住揀語言、睇 Penny 嘅自我介紹（只會顯示你揀嗰一種語言）、設定暱稱同頭像、揀背景、設定 PIN 密碼，再設定堅持日數同獎勵（可以跳過）。可以用“← 上一步”返回。設定精靈淨係喺一個帳戶第一次用，或者做完重置/刪除帳戶之後先會出現。喺第二部裝置，只需要用同一個 Google 帳戶登入，資料會自動過嚟，亦都唔使再行設定精靈。' });
+
+    faqSet(/^What do the sidebar and the top bar do/, null,
+      { en: 'Sidebar: Home (lock panel, journal, status), Schedule (current lock schedule), Settings (account, language, theme, introduction, streak goal & reward, log out, delete account), Manual / FAQ (this page) and Security (change PIN). The ☰ button collapses it. The top bar has Reset, your account and the system online status.',
+        zh: '侧边栏：首页（锁定面板、日记、状态）、日程（当前锁定日程）、设置（账户、语言、主题、简介、坚持目标与奖励、退出登录、删除账户）、说明书/FAQ（本页）、安全（修改PIN）。☰按钮可展开或收起侧边栏。顶部栏有重置、账户和系统在线状态。',
+        yue: '側邊欄：首頁（鎖定面板、日記、狀態）、日程（而家嘅鎖定日程）、設定（帳戶、語言、主題、簡介、堅持目標同獎勵、登出、刪除帳戶）、說明書/FAQ（呢頁）、安全（改PIN）。☰掣可以展開或者收埋側邊欄。頂部欄有重置、帳戶同系統在線狀態。' });
+
+    faqSet(/^What is saved when I refresh or close the app/, null,
+      { en: 'Everything stays: language, nickname and avatar, background theme, PIN, schedule, journal, streak goal & reward, the box state and the last page you were on. It is kept in this browser and also saved to your own Google account, so your other devices get the same data. You stay logged in after a refresh.',
+        zh: '全部都会保留：语言、昵称和头像、背景主题、PIN密码、日程、日记、坚持目标与奖励、盒子状态以及你上次停留的页面。数据保存在当前浏览器，同时也会保存到你自己的 Google 账号，所以你的其他设备会得到同样的数据。刷新页面后仍保持登录。',
+        yue: '全部都會保留：語言、暱稱同頭像、背景主題、PIN密碼、日程、日記、堅持目標同獎勵、盒仔狀態同埋你上次停留嘅頁面。資料儲存喺而家嘅瀏覽器，同時亦會儲存去你自己嘅 Google 帳戶，所以你其他裝置會有同樣嘅資料。重新整理頁面之後仍然保持登入。' });
+
+    faqSet(/^How do I delete my account/,
+      { en: 'How do I log out or delete my account?', zh: '如何退出登录或删除账户？', yue: '點樣登出或者刪除帳戶？' },
+      { en: 'Go to Settings → Account. Log out keeps all your data and takes you back to Login. Delete Account erases everything (nickname, avatar, PIN, journal, schedule, language, background and your cloud copy) and the app restarts from Welcome and the Setup Wizard. Both need your PIN. A normal refresh never logs you out or deletes anything.',
+        zh: '进入「设置 → 账号」。“退出登录”会保留所有数据并回到登录页。“删除账户”会清除全部内容（昵称、头像、PIN、日记、日程、语言、背景和云端备份），App 会从欢迎页和设置向导重新开始。两个都需要输入 PIN 密码。普通刷新页面不会退出登录，也不会删除任何数据。',
+        yue: '去「設定 → 帳戶」。“登出”會保留所有資料並返去登入頁。“刪除帳戶”會清走全部嘢（暱稱、頭像、PIN、日記、日程、語言、背景同雲端備份），App 會由歡迎頁同設定精靈重新開始。兩個都要輸入 PIN 密碼。普通重新整理頁面唔會登出，亦唔會刪除任何資料。' });
+
+    faqSet(/^Where is all my data stored/, null,
+      { en: 'In this browser and in your own Google account (a hidden app-data file in your Google Drive that only this app can read). Every change is saved there within a moment, and every Google account has its own separate data.',
+        zh: '保存在当前浏览器，同时也保存在你自己的 Google 账号里（你的 Google 云端硬盘中只有这个 App 能读取的隐藏应用数据文件）。每次修改都会在一瞬间保存过去，而且每个 Google 账号的数据各自独立。',
+        yue: '儲存喺而家嘅瀏覽器，同時亦儲存喺你自己嘅 Google 帳戶（你 Google 雲端硬碟入面淨係呢個 App 讀到嘅隱藏應用程式資料檔案）。每次改動都會喺一瞬間儲存過去，而且每個 Google 帳戶嘅資料各自獨立。' });
+
+    faqSet(/How do I watch the camera from another network/, null,
+      { en: 'Live video goes through the cloud. 1) Save the Cloud control address and secret key in Settings. 2) On the Raspberry Pi run pbox_camera.py with the cloud address and key, for example  python3 pbox_camera.py --cloud https://your-app.onrender.com --key YOUR_PBOX_KEY  (or enter them when running install_pbox_camera.sh so it starts at boot). 3) On the app open Home → Box Camera and tap Watch. The picture appears within a few seconds. The camera only opens while you are logged in.',
+        zh: '实时视频通过云端传送。1）先在设置里保存云端控制地址和密钥。2）在树莓派上运行 pbox_camera.py 并带上云端地址和密钥，例如  python3 pbox_camera.py --cloud https://你的应用.onrender.com --key 你的PBOX_KEY  ，也可以运行 install_pbox_camera.sh 时填入，让它开机自动运行。3）在 App 打开“首页 → 盒子摄像头”，点“查看”，几秒内就能看到画面。摄像头只有在已登录时才能打开。',
+        yue: '即時影片經雲端傳送。1）先喺設定儲存雲端控制地址同密鑰。2）喺樹莓派運行 pbox_camera.py 並帶上雲端地址同密鑰，例如  python3 pbox_camera.py --cloud https://你嘅應用.onrender.com --key 你嘅PBOX_KEY  ，亦可以運行 install_pbox_camera.sh 時輸入，等佢開機自動運行。3）喺 App 打開「首頁 → 盒仔鏡頭」，撳“睇”，幾秒內就睇到畫面。鏡頭淨係喺已登入嘅時候先打開到。' });
+
+    faqSet(/^How do Login, Sign in and automatic sync work/, null,
+      { en: 'When you open the site it shows Login and Sign in. Tap Sign in the first time to register with your Google account; the Welcome page follows. Next time tap Login. If that Google account has never signed in here before, you are sent back to the start screen to tap Sign in first. You stay logged in after a refresh, and only Log out or Delete Account (Settings → Account, both need your PIN) log you out. Opening and closing the box does not need Google. Everything you change (box open/closed, Time Control, nickname, journal, reminders, settings) is saved to your own Google account within a moment and shows up on your other devices by itself, without refreshing the page. A second device only needs to log in; the Welcome and Wizard are skipped. Anyone with a Google account can sign in and every account keeps its own separate data. Tips: Google sign-in needs the page opened from an https:// address and pop-ups must be allowed.',
+        zh: '打开网站会先显示“登录”和“注册（Sign in）”。第一次使用请点“注册”，用你的 Google 账号注册，之后会显示欢迎页面。以后点“登录”即可；如果这个 Google 账号以前从没在这里注册过，会回到开始画面，请先点“注册”。刷新页面不会退出登录，只有“退出登录”或“删除账户”（设置 → 账号，都需要输入 PIN）才会退出。开盒、关盒不需要 Google。你修改的所有内容（盒子开/关状态、时间控制、昵称、日记、提醒、设置）都会在一瞬间保存到你自己的 Google 账号，并自动出现在其他设备上，不需要刷新页面。第二台设备只需要登录，不用再走欢迎页和设置向导。任何有 Google 账号的人都可以登录，每个账号的数据各自独立。提示：Google 登录需要从 https:// 网址打开页面，并且要允许弹出窗口。',
+        yue: '打開網站會先顯示“登入”同“註冊（Sign in）”。第一次用請撳“註冊”，用你嘅 Google 帳戶註冊，之後會顯示歡迎頁面。以後撳“登入”就得；如果呢個 Google 帳戶以前從來冇喺度註冊過，會返去開始畫面，請先撳“註冊”。重新整理頁面唔會登出，淨係“登出”或者“刪除帳戶”（設定 → 帳戶，兩個都要輸入 PIN）先會登出。開盒、閂盒唔需要 Google。你改嘅所有嘢（盒仔開/關狀態、時間控制、暱稱、日記、提醒、設定）都會喺一瞬間儲存去你自己嘅 Google 帳戶，並自動出現喺其他裝置，唔使重新整理頁面。第二部裝置只需要登入，唔使再行歡迎頁同設定精靈。任何有 Google 帳戶嘅人都可以登入，每個帳戶嘅資料各自獨立。提示：Google 登入需要由 https:// 網址打開頁面，而且要允許彈出視窗。' });
+
+    // Reset FAQ (stays logged in)
+    FAQ_DATA.forEach(function (g) { g.items.forEach(function (it) {
+      if (/reset/i.test(it.q.en) && /factory|Reset button|“Reset”|"Reset"/i.test(it.a.en)) {
+        it.a = { en: 'Tap “Reset” at the top and enter your PIN. This account’s settings are cleared (PIN, nickname, journal, language, schedule, background) and you go through Welcome, Language, Introduction and the Setup Wizard again, like a new box. You stay logged in, so there is no need to log in again.',
+                 zh: '点击顶部的“重置”，输入 PIN 密码确认。这个账号的设置会被清空（PIN、昵称、日记、语言、日程、背景），然后重新走一遍欢迎页、选择语言、自我介绍和设置向导，就像一个全新的盒子。你仍然保持登录，不需要重新登录。',
+                 yue: '撳頂部嘅“重置”，輸入 PIN 密碼確認。呢個帳戶嘅設定會被清空（PIN、暱稱、日記、語言、日程、背景），然後重新行一次歡迎頁、揀語言、自我介紹同設定精靈，就好似一個全新嘅盒。你仍然保持登入，唔使重新登入。' };
+      } }); });
+
+    var cat1 = FAQ_DATA.find(function (g) { return g.cat === 1; });
+    if (cat1) cat1.items.push(X('Do I have to run the Setup Wizard again on my second device?',
+      'No. Log in with the same Google account and your data (language, nickname, PIN, schedule, journal, reminders, box state) arrives by itself, and the Welcome and Wizard are skipped. After that, anything you change on one device appears on the other automatically.',
+      '第二台设备需要再走一遍设置向导吗？',
+      '不需要。用同一个 Google 账号登录，你的数据（语言、昵称、PIN、日程、日记、提醒、盒子状态）会自动过来，欢迎页和设置向导都会跳过。之后你在一台设备上改的任何内容，都会自动出现在另一台设备上。',
+      '第二部裝置需要再行一次設定精靈嗎？',
+      '唔需要。用同一個 Google 帳戶登入，你嘅資料（語言、暱稱、PIN、日程、日記、提醒、盒仔狀態）會自動過嚟，歡迎頁同設定精靈都會跳過。之後你喺一部裝置改嘅任何嘢，都會自動出現喺另一部裝置。'));
+    renderFaq(true);
+  } catch (e) { console.error(e); }
+
+  // Settings → Introduction: one language only (the app language)
+  function fillSettingsIntro() {
+    var el = $('settingsIntroBody'); if (!el) return;
+    var l = gl('phoneboxLanguage'), k = (l && INTRO[l]) ? l : 'en';
+    el.innerHTML = INTRO[k].b.join('<br>');
+  }
+  fillSettingsIntro();
+  if (typeof window.applyTranslations === 'function') {
+    var _at = window.applyTranslations;
+    window.applyTranslations = function () { var r = _at.apply(this, arguments); try { fillSettingsIntro(); } catch (e) {} return r; };
   }
 
   // ---------- start ----------
