@@ -3952,7 +3952,7 @@ function updateBoxUI() {
 // The ESP32 asks <cloud>/status every 2 s and obeys the word "open" or "close" (your HTTPClient sketch).
 // This page changes that word with  POST <cloud>/command  {"cmd":"open"|"close","key":"<secret>"}.
 // Set the address in Settings → Cloud control, or hard-code it here:
-const PBOX_CLOUD_URL_DEFAULT = '';   // e.g. 'https://your-pbox.onrender.com'   (no trailing slash)
+const PBOX_CLOUD_URL_DEFAULT = 'https://pbox-cloud.onrender.com';   // e.g. 'https://your-pbox.onrender.com'   (no trailing slash)
 let lastCloudOpen = null, __cloudTick = 0, servoBubbleTimer2 = null;
 function cloudBase() {
   let u = ''; try { u = localStorage.getItem('phoneboxCloudUrl') || ''; } catch(e) {}
@@ -7336,7 +7336,7 @@ document.addEventListener('keydown', e => {
   // ---------- where the account data lives: your own server (preferred) or Google Drive ----------
   // If this page is opened from the same address as your Render server, or the Cloud control address is saved,
   // sync uses the server: Google sign-in is needed once, then a long-lived session is used (nothing expires hourly).
-  var PBOX_SERVER_URL = '';   // optional: 'https://your-app.onrender.com' when the page is hosted somewhere else
+  var PBOX_SERVER_URL = 'https://pbox-cloud.onrender.com';   // optional: 'https://your-app.onrender.com' when the page is hosted somewhere else
   var SRV = { base: '', sess: '', checked: 0 };
   function srvKeyFor(email) { return 'pboxSrv:' + email; }
   function srvSessKey() { var s = session(); return s ? srvKeyFor(s.email) : ''; }
