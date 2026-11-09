@@ -7164,13 +7164,16 @@ document.addEventListener('keydown', e => {
         gToken = ''; gTokenExp = 0; setMsg('notallowed'); return;
       }
 
+      if (!SRV.checked || !SRV.base) { try { await srvProbe(); } catch (e) {} }
+      if (SRV.base) { try { await srvLogin(gToken); } catch (e) {} }     // long-lived session on your server
+
       // This account was just deleted here: remove its old cloud copy so Sign in starts fresh (Welcome + Wizard).
       var deletedNow = gl('pboxDeletedEmail') === email;
-      if (deletedNow) { try { var ff = await driveFind(); if (ff) await gFetch('https://www.googleapis.com/drive/v3/files/' + ff.id, { method: 'DELETE' }); } catch (e) {} rl('pboxDeletedEmail'); try { rl('phoneboxSyncMeta'); } catch (e) {} }
+      if (deletedNow) { try { var ff = await tFind(); if (ff) await tDelete(ff.id); } catch (e) {} rl('pboxDeletedEmail'); try { rl('phoneboxSyncMeta'); } catch (e) {} }
 
       // Has this Google account signed in before? (this browser, or the copy kept in its own Google Drive app data)
       var known = !deletedNow && knownList().indexOf(email) > -1;
-      if (!known && !deletedNow) { try { known = !!(await driveFind()); } catch (e) {} }
+      if (!known && !deletedNow) { try { known = !!(await tFind()); } catch (e) {} }
 
       if (pendingMode === 'login' && !known) {
         gToken = ''; gTokenExp = 0;              // not registered: back to the start screen
@@ -7266,7 +7269,7 @@ document.addEventListener('keydown', e => {
   if (typeof SYNC_KEYS !== 'undefined' && SYNC_KEYS.indexOf('phoneboxBoxState') < 0) SYNC_KEYS.push('phoneboxBoxState');
   ['phoneboxLanguage', 'phoneboxTheme'].forEach(function (k) { var i = SYNC_KEYS.indexOf(k); if (i > -1) SYNC_KEYS.splice(i, 1); });   // language and background are NOT shared
   var PUSH_MS = 250, POLL_MS = 1500;
-  var v2 = { initializing: false, timer: null, busy: false, again: false, pending: null, tick: 0, needGesture: false, refreshing: null };
+  var v2 = { polling: false, initializing: false, timer: null, busy: false, again: false, pending: null, tick: 0, needGesture: false, refreshing: null };
   function tokenLive() { return !!(gToken && Date.now() < gTokenExp); }
 
   function ensureToken(interactive) {
@@ -7319,9 +7322,10 @@ document.addEventListener('keydown', e => {
   }
   function wipeLocal(everything) {
     STASH_KEYS.forEach(function (k) { if (!everything && (k === 'phoneboxLanguage' || k === 'phoneboxTheme')) return; __lsRem.call(localStorage, k); });
-    if (everything) { rl(AUTH_KEY); rl(KNOWN_KEY); rl('phoneboxOwner'); }
+    if (everything) { var sk1 = srvSessKey(); if (sk1) rl(sk1); SRV.sess = ''; rl(AUTH_KEY); rl(KNOWN_KEY); rl('phoneboxOwner'); }
   }
   function localLogout(noticeKey) {
+    var sk0 = srvSessKey(); if (sk0) rl(sk0); SRV.sess = '';
     rl(AUTH_KEY);
     gToken = ''; gTokenExp = 0;
     try { if (typeof stopCamera === 'function') stopCamera(); } catch (e) {}
@@ -7339,18 +7343,70 @@ document.addEventListener('keydown', e => {
     var t0 = Date.now(); while (v2.busy && Date.now() - t0 < 3000) await new Promise(function (r) { setTimeout(r, 50); });
     v2.busy = true;
     try {
-      if (!tokenLive()) await ensureToken(true);
-      if (!tokenLive()) return;
+      if (!canSync()) await ensureAuth(true);
+      if (!canSync()) return;
       var m = syncMetaGet(), fileId = m.fileId;
-      if (!fileId) { var f = await driveFind(); fileId = f && f.id; }
+      if (!fileId) { var f = await tFind(); fileId = f && f.id; }
       var stamp = Date.now(), map = { delete: EV[0], reset: EV[1], logout: EV[2] }[kind];
       seenSet(map[1], stamp);
       var obj = Object.assign({ v: 1, updatedAt: stamp, data: kind === 'logout' ? syncCollect() : {} }, evFields());
-      var res = await driveWrite2(fileId, obj);
+      var res = await tWrite(fileId, obj);
       syncMetaSet({ lastRemoteAt: stamp, lastSync: stamp, dirty: false, dirtyAt: 0, fileId: res.id, rmt: res.modifiedTime });
     } catch (e) {} finally { v2.busy = false; }
   }
   function withTimeout(p, ms) { return Promise.race([p, new Promise(function (r) { setTimeout(r, ms); })]); }
+
+
+  // ---------- where the account data lives: your own server (preferred) or Google Drive ----------
+  // If this page is opened from the same address as your Render server, or the Cloud control address is saved,
+  // sync uses the server: Google sign-in is needed once, then a long-lived session is used (nothing expires hourly).
+  var PBOX_SERVER_URL = '';   // optional: 'https://your-app.onrender.com' when the page is hosted somewhere else
+  var SRV = { base: '', sess: '', checked: 0 };
+  function srvKeyFor(email) { return 'pboxSrv:' + email; }
+  function srvSessKey() { var s = session(); return s ? srvKeyFor(s.email) : ''; }
+  function canSync() { return SRV.base ? !!SRV.sess : tokenLive(); }
+  async function srvFetch(p, opt) {
+    var r = await fetch(SRV.base + p, Object.assign({ headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SRV.sess } }, opt || {}));
+    if (r.status === 401) { SRV.sess = ''; var k = srvSessKey(); if (k) rl(k); throw new Error('token'); }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }
+  async function srvLogin(token) {
+    var r = await fetch(SRV.base + '/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: token }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var j = await r.json(); SRV.sess = j.session; sl(srvKeyFor(j.email), j.session); return j;
+  }
+  async function srvProbe() {
+    if (location.protocol === 'file:') { SRV.checked = Date.now(); return false; }
+    var c = [PBOX_SERVER_URL, location.origin]; try { c.push(cloudBase()); } catch (e) {}
+    var seen = {};
+    for (var i = 0; i < c.length; i++) {
+      var b = String(c[i] || '').replace(/\/+$/, ''); if (!b || seen[b]) continue; seen[b] = 1;
+      try {
+        var j = await (await fetch(b + '/sync/ping', { cache: 'no-store' })).json();
+        if (j && j.sync) { var was = SRV.base; SRV.base = b; SRV.sess = gl(srvSessKey()) || SRV.sess; SRV.checked = Date.now(); return !was; }
+      } catch (e) {}
+    }
+    SRV.checked = Date.now(); return false;
+  }
+  async function ensureAuth(interactive) {
+    if (canSync()) return true;
+    if (SRV.base && !SRV.sess) { SRV.sess = gl(srvSessKey()) || ''; if (SRV.sess) return true; }
+    var ok = await ensureToken(interactive); if (!ok) return false;
+    if (SRV.base) { try { await srvLogin(gToken); } catch (e) { return false; } }
+    return canSync();
+  }
+  async function tFind() { if (SRV.base) { var j = await srvFetch('/sync/pull'); return j.obj ? { id: 'srv' } : null; } return driveFind(); }
+  async function tRead(id) { if (SRV.base) { var j = await srvFetch('/sync/pull'); return j.obj; } return driveRead(id); }
+  async function tWrite(id, obj) {
+    if (SRV.base) { var j = await srvFetch('/sync/push', { method: 'POST', body: JSON.stringify({ obj: obj }) }); return { id: 'srv', modifiedTime: String(j.rev) }; }
+    return driveWrite2(id, obj);
+  }
+  async function tStat(id, wait) {
+    if (SRV.base) { var m = syncMetaGet(); var j = await srvFetch('/sync/meta' + (wait && m.rmt ? '?wait=1&rev=' + encodeURIComponent(m.rmt) : '')); return { modifiedTime: String(j.rev) }; }
+    return (await gFetch('https://www.googleapis.com/drive/v3/files/' + id + '?fields=modifiedTime')).json();
+  }
+  async function tDelete(id) { if (SRV.base) { await srvFetch('/sync/delete', { method: 'POST', body: '{}' }); return; } await gFetch('https://www.googleapis.com/drive/v3/files/' + id, { method: 'DELETE' }); }
 
   window.syncMarkDirty = function () {                      // called by the app on every saved change
     var m = syncMetaGet(); m.dirty = true; m.dirtyAt = Date.now(); syncMetaSet(m);
@@ -7362,13 +7418,14 @@ document.addEventListener('keydown', e => {
     if (!session()) return;
     if (v2.initializing && force !== true) return;
     if (v2.busy) { v2.again = true; return; }
-    if (!tokenLive()) { var ok = await ensureToken(false); if (!ok) { v2.needGesture = true; return; } }
+    if (!SRV.checked) return;                                 // still finding out where to sync
+    if (!canSync()) { var ok = await ensureAuth(false); if (!ok) { v2.needGesture = true; return; } }
     v2.busy = true;
     try {
       var m = syncMetaGet(), fileId = m.fileId;
-      if (!fileId) { var f = await driveFind(); fileId = f && f.id; }
+      if (!fileId) { var f = await tFind(); fileId = f && f.id; }
       var stamp = Date.now();
-      var res = await driveWrite2(fileId, Object.assign({ v: 1, updatedAt: stamp, data: syncCollect() }, evFields()));
+      var res = await tWrite(fileId, Object.assign({ v: 1, updatedAt: stamp, data: syncCollect() }, evFields()));
       var again = v2.again; v2.again = false;
       syncMetaSet({ lastRemoteAt: stamp, lastSync: stamp, dirty: again, dirtyAt: again ? Date.now() : 0, fileId: res.id, rmt: res.modifiedTime });
       if (again) setTimeout(v2Push, 0);
@@ -7443,38 +7500,42 @@ document.addEventListener('keydown', e => {
   }
 
   async function v2Poll() {
-    if (!session() || v2.busy || v2.initializing) return;
-    if (document.hidden && (v2.tick++ % 4)) return;           // slower while the tab is hidden
+    if (!session() || v2.busy || v2.initializing || v2.polling || !SRV.checked) return;
+    if (document.hidden && !SRV.base && (v2.tick++ % 4)) return;   // slower while the tab is hidden (Drive only)
     if (v2.pending) { if (!userBusy()) { var pd = v2.pending; v2.pending = null; applyRemote(pd.remote, pd.rmt, pd.id); } return; }
     var m = syncMetaGet();
-    if (m.dirty) { if (tokenLive()) v2Push(); return; }
-    if (!tokenLive()) return;
+    if (m.dirty) { if (canSync()) v2Push(); return; }
+    if (!canSync()) return;
+    v2.polling = true;
     try {
       var id = m.fileId;
-      if (!id) { var f = await driveFind(); if (!f) return; id = f.id; m.fileId = id; syncMetaSet(m); }
-      var j = await (await gFetch('https://www.googleapis.com/drive/v3/files/' + id + '?fields=modifiedTime')).json();
+      if (!id) { var f = await tFind(); if (!f) { if (gl('phoneboxSetupComplete')) v2Push(); return; } id = f.id; m.fileId = id; syncMetaSet(m); }
+      var j = await tStat(id, true);                           // with your server this waits until something changes
+      m = syncMetaGet();
+      if (!session() || m.dirty) return;
       if (j.modifiedTime && j.modifiedTime !== m.rmt) {
-        var remote = await driveRead(id);
+        var remote = await tRead(id);
         if (remote) { var evn = detectEvent(remote); if (evn) { applyEvent(evn, remote); return; } if (seenGet('pboxDeletedSeen') === null) adoptSeen(remote); }
         if (syncMetaGet().dirty) return;                       // you changed something meanwhile: yours wins
-        if (remote && remote.data && (remote.updatedAt || 0) > (m.lastRemoteAt || 0)) {
+        if (remote && remote.data && (SRV.base || (remote.updatedAt || 0) > (m.lastRemoteAt || 0))) {
           if (userBusy() && needsReload(remote)) v2.pending = { remote: remote, rmt: j.modifiedTime, id: id };
           else applyRemote(remote, j.modifiedTime, id);
         } else { var m2 = syncMetaGet(); m2.rmt = j.modifiedTime; syncMetaSet(m2); }
       }
     } catch (e) { if (String(e && e.message) === 'HTTP 404') { var m3 = syncMetaGet(); m3.fileId = ''; syncMetaSet(m3); } }
+    finally { v2.polling = false; }
   }
 
   // At login: make this device and the account's copy agree (newest change wins, no questions asked).
   async function v2Initial() {
     v2.initializing = true;
     try {
-      var m = syncMetaGet(), f = await driveFind();
+      var m = syncMetaGet(), f = await tFind();
       if (!f) { await v2Push(true); return 'ok'; }
       m.fileId = f.id; syncMetaSet(m);
-      var remote = await driveRead(f.id);
+      var remote = await tRead(f.id);
       if (!remote || !remote.data) { await v2Push(true); return 'ok'; }
-      var j = await (await gFetch('https://www.googleapis.com/drive/v3/files/' + f.id + '?fields=modifiedTime')).json();
+      var j = await tStat(f.id, false);
       var evn0 = detectEvent(remote);
       if (evn0 === 'delete' || evn0 === 'reset') { applyEvent(evn0, remote); return 'applied'; }
       adoptSeen(remote);
@@ -7491,16 +7552,20 @@ document.addEventListener('keydown', e => {
   window.pboxSyncNow = function () { return syncMetaGet().dirty ? v2Push() : v2Poll(); };
 
   setInterval(v2Poll, POLL_MS);
-  setInterval(function () { if (session() && (!tokenLive() || gTokenExp - Date.now() < 300000)) ensureToken(false).then(function (ok) { if (!ok) v2.needGesture = true; }); }, 30000);
+  setInterval(function () {
+    if (!session() || !SRV.checked) return;
+    if (!SRV.base) { srvProbe().then(function (found) { if (found) ensureAuth(false).then(function (ok) { if (ok) v2Initial().catch(function () {}); }); }).catch(function () {}); }
+    if (SRV.base ? !SRV.sess : (!tokenLive() || gTokenExp - Date.now() < 300000)) ensureAuth(false).then(function (ok) { if (!ok) v2.needGesture = true; });
+  }, 30000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) v2Poll(); });
   window.addEventListener('focus', function () { v2Poll(); });
   // If Google could not renew the access silently, renew it on the next tap (a quick window that closes by itself).
   ['pointerdown', 'keydown'].forEach(function (ev) {
     document.addEventListener(ev, function () {
-      if (v2.needGesture && session() && !tokenLive()) { v2.needGesture = false; ensureToken(true); }
+      if (v2.needGesture && session() && !canSync()) { v2.needGesture = false; ensureAuth(true); }
     }, true);
   });
-  window.addEventListener('beforeunload', function () { if (syncMetaGet().dirty && tokenLive()) { try { v2Push(); } catch (e) {} } });
+  window.addEventListener('beforeunload', function () { if (syncMetaGet().dirty && canSync()) { try { v2Push(); } catch (e) {} } });
 
   // ======================= Introduction in 3 languages =======================
   var INTRO = {
@@ -7621,6 +7686,13 @@ document.addEventListener('keydown', e => {
                  yue: '撳頂部嘅“重置”，輸入 PIN 密碼確認。呢個帳戶嘅設定會被清空（PIN、暱稱、日記、語言、日程、背景），然後重新行一次歡迎頁、揀語言、自我介紹同設定精靈，就好似一個全新嘅盒。你仍然保持登入，唔使重新登入。你其他裝置都會一齊重置。' };
       } }); });
 
+    var cat4 = FAQ_DATA.find(function (g) { return g.cat === 4; });
+    if (cat4) cat4.items.push(X('Where is my data kept, and why does sync not expire every hour?',
+      'If the page can reach your cloud server (it is opened from the same address, or the Cloud control address is saved in Settings), your settings are kept on that server, one copy per Google account. You sign in with Google once; the server then gives this device a session that lasts 90 days, so sync keeps working without Google asking again, and a change on one device reaches the others in well under a second. Without the server, the app falls back to a hidden file in your own Google Drive, where the Google access has to be renewed about every hour. Every device also keeps its own copy, so if the server restarts and forgets, the devices send the data again.',
+      '我的数据保存在哪里？为什么同步不会每小时失效？',
+      '只要页面能连上你的云端服务器（用同一个地址打开，或者在设置里保存了云端控制地址），你的设置就会保存在这台服务器上，每个 Google 账号一份。你用 Google 登录一次，服务器会给这台设备一个有效期 90 天的会话，同步就不会再被 Google 要求重新授权，一台设备上的改动也会在不到一秒内到达其他设备。如果连不上服务器，App 会退回到使用你自己 Google 云端硬盘里的隐藏文件，那种方式的 Google 授权大约每小时要续一次。每台设备也都保留着自己的一份数据，所以服务器重启后忘记了数据，设备会重新把数据发给它。',
+      '我嘅資料儲存喺邊度？點解同步唔會每個鐘失效？',
+      '只要頁面連得到你嘅雲端伺服器（用同一個地址打開，或者喺設定儲存咗雲端控制地址），你嘅設定就會儲存喺呢部伺服器，每個 Google 帳戶一份。你用 Google 登入一次，伺服器會畀呢部裝置一個有效期 90 日嘅連線，同步就唔會再被 Google 要求重新授權，一部裝置嘅改動亦會喺唔使一秒內去到其他裝置。如果連唔到伺服器，App 會退返去用你自己 Google 雲端硬碟入面嘅隱藏檔案，嗰種方式嘅 Google 授權大約每個鐘要續一次。每部裝置都保留自己一份資料，所以伺服器重啟之後唔記得資料，裝置會再將資料傳返畀佢。'));
     var cat1 = FAQ_DATA.find(function (g) { return g.cat === 1; });
     if (cat1) cat1.items.push(X('Do I have to run the Setup Wizard again on my second device?',
       'No. Log in with the same Google account and your data (language, nickname, PIN, schedule, journal, reminders, box state) arrives by itself, and the Welcome and Wizard are skipped. After that, anything you change on one device appears on the other automatically.',
@@ -7655,8 +7727,9 @@ document.addEventListener('keydown', e => {
   }
   renderGate();
   if (location.protocol !== 'file:' && typeof gsiLoad === 'function') { try { gsiLoad().catch(function () {}); } catch (e) {} }   // preload so the pop-up opens instantly
+  if (!session()) { srvProbe().catch(function () {}); }
   if (session() && location.protocol !== 'file:' && typeof gsiLoad === 'function') {
-    gsiLoad().then(function () { return ensureToken(false); }).then(function (ok) { if (ok) window.pboxSyncNow(); else v2.needGesture = true; }).catch(function () {});
+    srvProbe().catch(function () {}).then(function () { return gsiLoad(); }).then(function () { return ensureAuth(false); }).then(function (ok) { if (ok) window.pboxSyncNow(); else v2.needGesture = true; }).catch(function () {});
   }
 })();
 
