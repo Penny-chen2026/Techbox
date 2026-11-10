@@ -60,6 +60,10 @@ body.theme-green{--bg:#020f08;--surface:#031508;--surface2:#041e0b;--accent:#00e
 body{font-family:'Rajdhani',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;transition:background 0.4s,color 0.4s}
 .bg-overlay{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse 80% 60% at 50% -20%,rgba(26,111,255,0.08) 0%,transparent 70%);pointer-events:none}
 .grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0.03;background-image:linear-gradient(var(--accent) 1px,transparent 1px),linear-gradient(90deg,var(--accent) 1px,transparent 1px);background-size:60px 60px}
+.emoji-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.emoji-bg span{position:absolute;opacity:.22;line-height:1;animation:emojiFloat 20s ease-in-out infinite;will-change:transform}
+@keyframes emojiFloat{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-26px) rotate(8deg)}}
+@media (prefers-reduced-motion:reduce){.emoji-bg span{animation:none}}
 .app-shell{display:flex;min-height:100vh;position:relative;z-index:1}
 
 /* SIDEBAR */
@@ -726,6 +730,7 @@ if(!window.pboxSignedIn())document.documentElement.classList.add('pbox-needs-log
     <div class="auth-pw">
       <input type="text" id="authUser" class="lang-search" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="20">
       <input type="password" id="authPass" class="lang-search" autocomplete="current-password" maxlength="128" onkeydown="if(event.key==='Enter')pboxPwAuth('login')">
+      <button class="btn auth-btn" id="authPwGenBtn" type="button" onclick="pboxPwGen()" style="padding:9px 14px;font-size:14px"></button>
       <button class="btn btn-primary auth-btn" id="authPwLoginBtn" onclick="pboxPwAuth('login')"></button>
       <button class="btn auth-btn" id="authPwSigninBtn" onclick="pboxPwAuth('signin')"></button>
       <div class="auth-hint" id="authPwHint"></div>
@@ -742,6 +747,8 @@ if(!window.pboxSignedIn())document.documentElement.classList.add('pbox-needs-log
 
 <div class="bg-overlay"></div>
 <div class="grid-bg"></div>
+<div class="emoji-bg" id="emojiBg" aria-hidden="true"></div>
+<script>(function(){var E=['🍎','🍏','🍓','🍒','🍑','🍉','🌸','⭐','✨','💙','🎧','📱','🌙','☁️','🔒','🍊'],b=document.getElementById('emojiBg');if(!b)return;for(var i=0;i<22;i++){var s=document.createElement('span');s.textContent=E[i%E.length];s.style.left=(Math.random()*95)+'%';s.style.top=(Math.random()*90)+'%';s.style.fontSize=(22+Math.random()*30)+'px';s.style.animationDelay=(-Math.random()*20)+'s';s.style.animationDuration=(14+Math.random()*14)+'s';b.appendChild(s);}})();</script>
 
 <div class="app-shell">
 
@@ -7004,6 +7011,9 @@ document.addEventListener('keydown', e => {
                 yue: '以前登入過請撳“登入”；第一次用請撳“註冊（Sign in）”。' },
     login:    { en: '🔑 Login',   zh: '🔑 登录',  yue: '🔑 登入' },
     signin:   { en: '✨ Sign in', zh: '✨ 注册（Sign in）', yue: '✨ 註冊（Sign in）' },
+    pwgen: { en: '🎲 Make a strong random password', zh: '🎲 生成随机高强度密码', yue: '🎲 生成隨機高強度密碼' },
+    pwgenok: { en: 'Password made and copied. Write it down now, it cannot be recovered. Then tap Sign up.', zh: '密码已生成并复制。请马上记下来，忘记就找不回了。然后点“用户名注册”。', yue: '密碼已生成並複製。請即刻記低，唔記得就搵唔返。然後撳“用戶名註冊”。' },
+    pwgenok2: { en: 'Password made. Write it down now, it cannot be recovered. Then tap Sign up.', zh: '密码已生成。请马上记下来，忘记就找不回了。然后点“用户名注册”。', yue: '密碼已生成。請即刻記低，唔記得就搵唔返。然後撳“用戶名註冊”。' },
     pwor: { en: '— or use a username —', zh: '— 或者用用户名登录 —', yue: '— 或者用用戶名登入 —' },
     pwuser: { en: 'Username (3–20 letters, numbers or _)', zh: '用户名（3–20 位字母、数字或 _）', yue: '用戶名（3–20 位字母、數字或 _）' },
     pwpass: { en: 'Password (at least 8 characters)', zh: '密码（至少 8 位）', yue: '密碼（至少 8 位）' },
@@ -7095,7 +7105,7 @@ document.addEventListener('keydown', e => {
   function renderGate() {
     var set = function (id, k) { var el = $(id); if (el) el.textContent = am(k); };
     set('authSub', 'sub'); set('authLoginBtn', 'login'); set('authSigninBtn', 'signin'); set('authIdSave', 'save');
-    set('authOr', 'pwor'); set('authPwLoginBtn', 'pwlogin'); set('authPwSigninBtn', 'pwsignin'); set('authPwHint', 'pwhint');
+    set('authOr', 'pwor'); set('authPwGenBtn', 'pwgen'); set('authPwLoginBtn', 'pwlogin'); set('authPwSigninBtn', 'pwsignin'); set('authPwHint', 'pwhint');
     var u1 = $('authUser'), p1 = $('authPass'); if (u1) u1.placeholder = am('pwuser'); if (p1) p1.placeholder = am('pwpass');
     var box = $('authIdBox'); if (box) box.style.display = clientId() ? 'none' : 'block';
   }
@@ -7153,6 +7163,16 @@ document.addEventListener('keydown', e => {
     tc.requestAccessToken({ prompt: 'select_account' });
   };
 
+  // Random strong password: 20 characters from a large alphabet (no look-alike characters), made by the browser's secure random source.
+  window.pboxPwGen = function () {
+    var A = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*-_=+', out;
+    function pick() { var a = new Uint32Array(1), lim = Math.floor(4294967296 / A.length) * A.length; do { crypto.getRandomValues(a); } while (a[0] >= lim); return A.charAt(a[0] % A.length); }
+    do { out = ''; for (var i = 0; i < 20; i++) out += pick(); } while (!/[a-z]/.test(out) || !/[A-Z]/.test(out) || !/[2-9]/.test(out) || !/[^A-Za-z0-9]/.test(out));
+    var pb = $('authPass'); if (pb) { pb.value = out; pb.type = 'text'; pb.setAttribute('autocomplete', 'new-password'); }
+    var h = $('authPwHint'), done = function (k) { if (h) h.textContent = am(k); setMsg(''); };
+    try { navigator.clipboard.writeText(out).then(function () { done('pwgenok'); }, function () { done('pwgenok2'); }); } catch (e) { done('pwgenok2'); }
+  };
+
   // Username + password login: a second way in that does not need Google.
   window.pboxPwAuth = async function (mode) {
     setMsg('');
@@ -7172,7 +7192,7 @@ document.addEventListener('keydown', e => {
       if (!email || !j.session) { setMsg('pwerr'); return; }
       if (PBOX_ALLOWED_EMAILS.length && PBOX_ALLOWED_EMAILS.map(function (x) { return String(x).toLowerCase(); }).indexOf(email) < 0) { setMsg('notallowed'); return; }
       SRV.sess = j.session; sl(srvKeyFor(email), j.session);
-      var pwBox = $('authPass'); if (pwBox) pwBox.value = '';
+      var pwBox = $('authPass'); if (pwBox) { pwBox.value = ''; pwBox.type = 'password'; }
 
       var deletedNow = gl('pboxDeletedEmail') === email;           // deleted here a moment ago: start fresh
       if (deletedNow) { try { var ff = await tFind(); if (ff) await tDelete(ff.id); } catch (e) {} rl('pboxDeletedEmail'); try { rl('phoneboxSyncMeta'); } catch (e) {} }
