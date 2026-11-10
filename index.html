@@ -60,10 +60,6 @@ body.theme-green{--bg:#020f08;--surface:#031508;--surface2:#041e0b;--accent:#00e
 body{font-family:'Rajdhani',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;transition:background 0.4s,color 0.4s}
 .bg-overlay{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse 80% 60% at 50% -20%,rgba(26,111,255,0.08) 0%,transparent 70%);pointer-events:none}
 .grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0.03;background-image:linear-gradient(var(--accent) 1px,transparent 1px),linear-gradient(90deg,var(--accent) 1px,transparent 1px);background-size:60px 60px}
-.emoji-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-.emoji-bg span{position:absolute;opacity:.22;line-height:1;animation:emojiFloat 20s ease-in-out infinite;will-change:transform}
-@keyframes emojiFloat{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-26px) rotate(8deg)}}
-@media (prefers-reduced-motion:reduce){.emoji-bg span{animation:none}}
 .app-shell{display:flex;min-height:100vh;position:relative;z-index:1}
 
 /* SIDEBAR */
@@ -747,8 +743,6 @@ if(!window.pboxSignedIn())document.documentElement.classList.add('pbox-needs-log
 
 <div class="bg-overlay"></div>
 <div class="grid-bg"></div>
-<div class="emoji-bg" id="emojiBg" aria-hidden="true"></div>
-<script>(function(){var E=['🍎','🍏','🍓','🍒','🍑','🍉','🌸','⭐','✨','💙','🎧','📱','🌙','☁️','🔒','🍊'],b=document.getElementById('emojiBg');if(!b)return;for(var i=0;i<22;i++){var s=document.createElement('span');s.textContent=E[i%E.length];s.style.left=(Math.random()*95)+'%';s.style.top=(Math.random()*90)+'%';s.style.fontSize=(22+Math.random()*30)+'px';s.style.animationDelay=(-Math.random()*20)+'s';s.style.animationDuration=(14+Math.random()*14)+'s';b.appendChild(s);}})();</script>
 
 <div class="app-shell">
 
@@ -5505,15 +5499,15 @@ Object.assign(I18N.yue,{
  tour_ip:'加IP|喺度加新嘅ESP32 IP，同時儲存Wi-Fi名稱、密碼同備註。IP唔會驗證，直接輸入串口監視器入面嘅地址就得。要輸入PIN密碼。',
  tour_6:'堅持獎勵|計算手機連續放入盒嘅日數。完成當日打卡後，呢度會開出一朵小紅花 🌺。達到目標後，家長會派獎勵。',});
 Object.assign(I18N.en,{nets_pin_note:'Showing a password, using another IP or deleting needs your PIN. Adding and editing do not.',
- wizard_bg_aurora:'🌌 AURORA',wizard_bg_neon:'⚡ NEON',wizard_bg_matrix:'💻 MATRIX',wizard_bg_lava:'🌋 LAVA',wizard_bg_stars:'🌠 STARS',wizard_bg_holo:'🌈 HOLO',
+ wizard_bg_aurora:'🌌 AURORA',wizard_bg_neon:'⚡ NEON',wizard_bg_matrix:'💻 MATRIX',wizard_bg_lava:'🌋 LAVA',wizard_bg_stars:'🌠 STARS',wizard_bg_holo:'🌈 HOLO',wizard_bg_emoji:'🍎 EMOJI',
  tour_ip:'Add IP|Add a new ESP32 IP here with its Wi-Fi name, password and a note. The IP is not verified and no PIN is needed to save it. To change one later, use Edit in Settings.',
  tour_1:'ESP32 IP|Tap this box to see your saved IPs, each with the Wi-Fi network it belongs to. Pick one to use it (needs your PIN).',});
 Object.assign(I18N.zh,{nets_pin_note:'查看密码、切换其他IP或删除需要PIN；添加和编辑不需要。',
- wizard_bg_aurora:'🌌 极光',wizard_bg_neon:'⚡ 霓虹',wizard_bg_matrix:'💻 黑客',wizard_bg_lava:'🌋 熔岩',wizard_bg_stars:'🌠 星河',wizard_bg_holo:'🌈 幻彩',
+ wizard_bg_aurora:'🌌 极光',wizard_bg_neon:'⚡ 霓虹',wizard_bg_matrix:'💻 黑客',wizard_bg_lava:'🌋 熔岩',wizard_bg_stars:'🌠 星河',wizard_bg_holo:'🌈 幻彩',wizard_bg_emoji:'🍎 表情',
  tour_ip:'添加IP|在这里添加新的ESP32 IP，同时保存Wi-Fi名称、密码和备注。IP不做验证，保存也不需要PIN。以后要修改，请在设置里点“Edit”。',
  tour_1:'ESP32 IP|点击这个框可以看到已保存的IP，每个IP都标有它所属的Wi-Fi网络。选择一个即可使用（需要PIN）。',});
 Object.assign(I18N.yue,{nets_pin_note:'睇密碼、轉用其他IP或者刪除要PIN；加同編輯唔使。',
- wizard_bg_aurora:'🌌 極光',wizard_bg_neon:'⚡ 霓虹',wizard_bg_matrix:'💻 黑客',wizard_bg_lava:'🌋 熔岩',wizard_bg_stars:'🌠 星河',wizard_bg_holo:'🌈 幻彩',
+ wizard_bg_aurora:'🌌 極光',wizard_bg_neon:'⚡ 霓虹',wizard_bg_matrix:'💻 黑客',wizard_bg_lava:'🌋 熔岩',wizard_bg_stars:'🌠 星河',wizard_bg_holo:'🌈 幻彩',wizard_bg_emoji:'🍎 表情',
  tour_ip:'加IP|喺度加新嘅ESP32 IP，同時儲存Wi-Fi名稱、密碼同備註。IP唔會驗證，儲存都唔使PIN。之後要改，喺設定撳“Edit”。',
  tour_1:'ESP32 IP|撳呢個框可以睇到已儲存嘅IP，每個IP都有標示佢屬於邊個Wi-Fi網絡。揀一個就可以用（要PIN）。',});
 Object.assign(I18N.en,{
@@ -6563,6 +6557,9 @@ document.addEventListener('keydown', e => {
     @property --pbHoloA { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
     body.theme-holo .bg-overlay { background: conic-gradient(from var(--pbHoloA) at 50% 50%, rgba(255,0,128,0.30), rgba(255,200,0,0.28), rgba(0,255,150,0.28), rgba(0,160,255,0.30), rgba(160,0,255,0.30), rgba(255,0,128,0.30)); filter: saturate(1.2); animation: pbHolo 12s linear infinite; }
     @keyframes pbHolo { to { --pbHoloA: 360deg; } }
+    body.theme-emoji { --bg:#1a1030; --surface:#271a45; --surface2:#33235a; --accent:#ff6b9d; --accent2:#ffb3d1; --text:#fff0f6; --text2:#c9b0dd; --border:rgba(255,107,157,0.28); --glow:rgba(255,107,157,0.16); --danger:#ff5577; --success:#4ade80; --warning:#facc15; }
+    body.theme-emoji .bg-overlay { background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22200%22%20height%3D%22200%22%3E%3Cg%20font-size%3D%2230%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22central%22%20font-family%3D%22Apple%20Color%20Emoji%2CSegoe%20UI%20Emoji%2CNoto%20Color%20Emoji%2Csans-serif%22%3E%3Ctext%20x%3D%2225%22%20y%3D%2225%22%20transform%3D%22rotate%28-2%2025%2025%29%22%3E%F0%9F%8D%8E%3C%2Ftext%3E%3Ctext%20x%3D%2275%22%20y%3D%2225%22%20transform%3D%22rotate%28-13%2075%2025%29%22%3E%F0%9F%8D%8F%3C%2Ftext%3E%3Ctext%20x%3D%22125%22%20y%3D%2225%22%20transform%3D%22rotate%283%20125%2025%29%22%3E%F0%9F%8D%93%3C%2Ftext%3E%3Ctext%20x%3D%22175%22%20y%3D%2225%22%20transform%3D%22rotate%2819%20175%2025%29%22%3E%F0%9F%8D%92%3C%2Ftext%3E%3Ctext%20x%3D%220%22%20y%3D%2275%22%20transform%3D%22rotate%28-19%200%2075%29%22%3E%F0%9F%8D%91%3C%2Ftext%3E%3Ctext%20x%3D%2250%22%20y%3D%2275%22%20transform%3D%22rotate%28-18%2050%2075%29%22%3E%F0%9F%8D%89%3C%2Ftext%3E%3Ctext%20x%3D%22100%22%20y%3D%2275%22%20transform%3D%22rotate%2812%20100%2075%29%22%3E%F0%9F%98%8A%3C%2Ftext%3E%3Ctext%20x%3D%22150%22%20y%3D%2275%22%20transform%3D%22rotate%28-16%20150%2075%29%22%3E%F0%9F%92%99%3C%2Ftext%3E%3Ctext%20x%3D%22200%22%20y%3D%2275%22%20transform%3D%22rotate%281%20200%2075%29%22%3E%E2%AD%90%3C%2Ftext%3E%3Ctext%20x%3D%2225%22%20y%3D%22125%22%20transform%3D%22rotate%2815%2025%20125%29%22%3E%E2%9C%A8%3C%2Ftext%3E%3Ctext%20x%3D%2275%22%20y%3D%22125%22%20transform%3D%22rotate%28-19%2075%20125%29%22%3E%F0%9F%8C%B8%3C%2Ftext%3E%3Ctext%20x%3D%22125%22%20y%3D%22125%22%20transform%3D%22rotate%2810%20125%20125%29%22%3E%F0%9F%8D%8A%3C%2Ftext%3E%3Ctext%20x%3D%22175%22%20y%3D%22125%22%20transform%3D%22rotate%28-9%20175%20125%29%22%3E%F0%9F%8D%8E%3C%2Ftext%3E%3Ctext%20x%3D%220%22%20y%3D%22175%22%20transform%3D%22rotate%28-20%200%20175%29%22%3E%F0%9F%8D%8F%3C%2Ftext%3E%3Ctext%20x%3D%2250%22%20y%3D%22175%22%20transform%3D%22rotate%28-17%2050%20175%29%22%3E%F0%9F%8D%93%3C%2Ftext%3E%3Ctext%20x%3D%22100%22%20y%3D%22175%22%20transform%3D%22rotate%285%20100%20175%29%22%3E%F0%9F%8D%92%3C%2Ftext%3E%3Ctext%20x%3D%22150%22%20y%3D%22175%22%20transform%3D%22rotate%284%20150%20175%29%22%3E%F0%9F%8D%91%3C%2Ftext%3E%3Ctext%20x%3D%22200%22%20y%3D%22175%22%20transform%3D%22rotate%28-18%20200%20175%29%22%3E%F0%9F%8D%89%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fsvg%3E") 0 0 / 200px 200px repeat; opacity: .3; animation: pbEmojiDrift 90s linear infinite; }
+    @keyframes pbEmojiDrift { to { background-position: 200px 200px; } }
     @media (prefers-reduced-motion: reduce) { body[class*="theme-"] .bg-overlay { animation: none !important; } }
   `;
   document.head.appendChild(themeCSS);
@@ -6585,7 +6582,8 @@ document.addEventListener('keydown', e => {
       {t:'matrix',l:'💻 MATRIX',bg:'linear-gradient(135deg,#000,#00a63e 70%,#00ff66)',c:'#9dffc1'},
       {t:'lava',l:'🌋 LAVA',bg:'linear-gradient(135deg,#1a0500,#ff3d00 55%,#ffb300)',c:'#ffe0b0'},
       {t:'stars',l:'🌠 STARS',bg:'linear-gradient(135deg,#02020c,#2a2f8f 65%,#9aa5ff)',c:'#dfe3ff'},
-      {t:'holo',l:'🌈 HOLO',bg:'linear-gradient(135deg,#ff4d8d,#ffd54d,#4dffb0,#4db8ff,#a64dff)',c:'#fff'}
+      {t:'holo',l:'🌈 HOLO',bg:'linear-gradient(135deg,#ff4d8d,#ffd54d,#4dffb0,#4db8ff,#a64dff)',c:'#fff'},
+      {t:'emoji',l:'🍎 EMOJI',bg:'linear-gradient(135deg,#1a1030,#ff6b9d)',c:'#fff0f6'}
     ].forEach(th => {
       const b = document.createElement('div');
       b.className='theme-sw'; b.dataset.t=th.t; b.textContent=th.l;
@@ -6643,6 +6641,7 @@ document.addEventListener('keydown', e => {
           <div class="bg-option" data-bg="lava" style="height:80px;border-radius:12px;border:2px solid transparent;cursor:pointer;background:linear-gradient(135deg,#1a0500,#ff3d00 55%,#ffb300);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#ffe0b0" onclick="selectBackground('lava',this)">🌋 LAVA</div>
           <div class="bg-option" data-bg="stars" style="height:80px;border-radius:12px;border:2px solid transparent;cursor:pointer;background:linear-gradient(135deg,#02020c,#2a2f8f 65%,#9aa5ff);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#dfe3ff" onclick="selectBackground('stars',this)">🌠 STARS</div>
           <div class="bg-option" data-bg="holo" style="height:80px;border-radius:12px;border:2px solid transparent;cursor:pointer;background:linear-gradient(135deg,#ff4d8d,#ffd54d,#4dffb0,#4db8ff,#a64dff);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff" onclick="selectBackground('holo',this)">🌈 HOLO</div>
+          <div class="bg-option" data-bg="emoji" style="height:80px;border-radius:12px;border:2px solid transparent;cursor:pointer;background:linear-gradient(135deg,#1a1030,#ff6b9d);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff" onclick="selectBackground('emoji',this)">🍎 EMOJI</div>
         </div>
         <button class="btn btn-primary" style="width:100%;" id="bgPickerConfirmBtn" onclick="confirmBackground()">✓ Confirm</button>
       </div>
@@ -6667,7 +6666,7 @@ document.addEventListener('keydown', e => {
       'engineering': 'wizard_bg_engineering', 'purple': 'wizard_bg_purple',
       'sunset': 'wizard_bg_sunset', 'ocean': 'wizard_bg_ocean', 'red': 'wizard_bg_red',
       'aurora': 'wizard_bg_aurora', 'neon': 'wizard_bg_neon', 'matrix': 'wizard_bg_matrix',
-      'lava': 'wizard_bg_lava', 'stars': 'wizard_bg_stars', 'holo': 'wizard_bg_holo'
+      'lava': 'wizard_bg_lava', 'stars': 'wizard_bg_stars', 'holo': 'wizard_bg_holo', 'emoji': 'wizard_bg_emoji'
     };
     Object.keys(labelKeys).forEach(bg => {
       const el = document.querySelector(`.bg-option[data-bg="${bg}"]`);
