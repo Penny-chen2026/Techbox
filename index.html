@@ -687,6 +687,9 @@ html.pbox-needs-login body{overflow:hidden}
 .auth-btn{width:100%;padding:14px 18px;font-size:16px;margin-bottom:10px}
 .auth-msg{min-height:1.4em;margin-top:6px;font-size:13px;line-height:1.5;color:var(--danger)}
 .auth-idbox{display:none;margin:8px 0 12px;text-align:left}
+.auth-or{color:var(--text2);font-size:12px;margin:14px 0 10px}
+.auth-pw input{width:100%;box-sizing:border-box;margin-bottom:8px}
+.auth-hint{color:var(--text2);font-size:12px;line-height:1.5;margin-top:2px}
 .auth-idbox input{width:100%;box-sizing:border-box;margin-bottom:8px}
 .auth-pulse{animation:authPulse 1s ease-in-out 4}
 @keyframes authPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
@@ -718,6 +721,14 @@ if(!window.pboxSignedIn())document.documentElement.classList.add('pbox-needs-log
     <div class="auth-idbox" id="authIdBox">
       <input type="text" id="authIdIn" class="lang-search" autocomplete="off" placeholder="Google Client ID (xxxx.apps.googleusercontent.com)">
       <button class="btn" id="authIdSave" style="width:100%" onclick="pboxAuthSaveId()"></button>
+    </div>
+    <div class="auth-or" id="authOr"></div>
+    <div class="auth-pw">
+      <input type="text" id="authUser" class="lang-search" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="20">
+      <input type="password" id="authPass" class="lang-search" autocomplete="current-password" maxlength="128" onkeydown="if(event.key==='Enter')pboxPwAuth('login')">
+      <button class="btn btn-primary auth-btn" id="authPwLoginBtn" onclick="pboxPwAuth('login')"></button>
+      <button class="btn auth-btn" id="authPwSigninBtn" onclick="pboxPwAuth('signin')"></button>
+      <div class="auth-hint" id="authPwHint"></div>
     </div>
     <div class="auth-msg" id="authMsg"></div>
   </div>
@@ -6993,6 +7004,21 @@ document.addEventListener('keydown', e => {
                 yue: '以前登入過請撳“登入”；第一次用請撳“註冊（Sign in）”。' },
     login:    { en: '🔑 Login',   zh: '🔑 登录',  yue: '🔑 登入' },
     signin:   { en: '✨ Sign in', zh: '✨ 注册（Sign in）', yue: '✨ 註冊（Sign in）' },
+    pwor: { en: '— or use a username —', zh: '— 或者用用户名登录 —', yue: '— 或者用用戶名登入 —' },
+    pwuser: { en: 'Username (3–20 letters, numbers or _)', zh: '用户名（3–20 位字母、数字或 _）', yue: '用戶名（3–20 位字母、數字或 _）' },
+    pwpass: { en: 'Password (at least 8 characters)', zh: '密码（至少 8 位）', yue: '密碼（至少 8 位）' },
+    pwlogin: { en: '🔑 Login with username', zh: '🔑 用户名登录', yue: '🔑 用戶名登入' },
+    pwsignin: { en: '✨ Sign up with username', zh: '✨ 用户名注册', yue: '✨ 用戶名註冊' },
+    pwhint: { en: 'No Google needed. A forgotten password cannot be recovered, so keep it safe.', zh: '不需要 Google。忘记密码无法找回，请记好。', yue: '唔需要 Google。唔記得密碼就搵唔返，請記好。' },
+    pwbadname: { en: 'Username must be 3–20 letters, numbers or _.', zh: '用户名要 3–20 位，只能用字母、数字或 _。', yue: '用戶名要 3–20 位，只可以用字母、數字或 _。' },
+    pwbadpass: { en: 'Password must be at least 8 characters.', zh: '密码至少要 8 位。', yue: '密碼至少要 8 位。' },
+    pwexists: { en: 'That username is taken. Pick another, or tap Login if it is yours.', zh: '这个用户名已被使用。换一个，或者如果是你的就点“用户名登录”。', yue: '呢個用戶名已經有人用。換一個，或者如果係你嘅就撳“用戶名登入”。' },
+    pwwrong: { en: 'Wrong username or password.', zh: '用户名或密码不对。', yue: '用戶名或密碼唔啱。' },
+    pwtoomany: { en: 'Too many tries. Wait 10 minutes and try again.', zh: '尝试次数太多，请等 10 分钟再试。', yue: '試太多次，請等 10 分鐘再試。' },
+    pwnoserver: { en: 'Cannot reach the PBOX server. Check the network and try again.', zh: '连不上 PBOX 服务器，请检查网络后重试。', yue: '連唔到 PBOX 伺服器，請檢查網絡後再試。' },
+    pwerr: { en: 'Something went wrong. Please try again.', zh: '出错了，请重试。', yue: '出錯咗，請再試。' },
+    pwwait: { en: 'Please wait…', zh: '请稍等…', yue: '請稍等…' },
+    pwfile: { en: 'Open the page from an https:// address (not as a file).', zh: '请从 https:// 网址打开页面（不能直接打开文件）。', yue: '請由 https:// 網址打開頁面（唔可以直接打開檔案）。' },
     save:     { en: 'Save',       zh: '保存',     yue: '儲存' },
     file:     { en: 'Google sign-in needs the page opened from an https:// address (not as a file).',
                 zh: 'Google 登录需要从 https:// 网址打开页面（不能直接打开文件）。',
@@ -7069,6 +7095,8 @@ document.addEventListener('keydown', e => {
   function renderGate() {
     var set = function (id, k) { var el = $(id); if (el) el.textContent = am(k); };
     set('authSub', 'sub'); set('authLoginBtn', 'login'); set('authSigninBtn', 'signin'); set('authIdSave', 'save');
+    set('authOr', 'pwor'); set('authPwLoginBtn', 'pwlogin'); set('authPwSigninBtn', 'pwsignin'); set('authPwHint', 'pwhint');
+    var u1 = $('authUser'), p1 = $('authPass'); if (u1) u1.placeholder = am('pwuser'); if (p1) p1.placeholder = am('pwpass');
     var box = $('authIdBox'); if (box) box.style.display = clientId() ? 'none' : 'block';
   }
 
@@ -7123,6 +7151,47 @@ document.addEventListener('keydown', e => {
     });
     try { gTokenClient = tc; } catch (e) {}
     tc.requestAccessToken({ prompt: 'select_account' });
+  };
+
+  // Username + password login: a second way in that does not need Google.
+  window.pboxPwAuth = async function (mode) {
+    setMsg('');
+    if (authBusy) return;
+    if (location.protocol === 'file:') { setMsg('pwfile'); return; }
+    var name = String((($('authUser') || {}).value) || '').trim().toLowerCase(), pw = String((($('authPass') || {}).value) || '');
+    if (!/^[a-z0-9_]{3,20}$/.test(name)) { setMsg('pwbadname'); return; }
+    if (pw.length < 8) { setMsg('pwbadpass'); return; }
+    authBusy = true; setMsg('pwwait');
+    try {
+      if (!SRV.base) { try { await srvProbe(); } catch (e) {} }
+      if (!SRV.base) { setMsg('pwnoserver'); return; }
+      var r = await fetch(SRV.base + (mode === 'signin' ? '/auth/register' : '/auth/login'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: name, password: pw }) });
+      var j = {}; try { j = await r.json(); } catch (e) {}
+      if (!r.ok) { setMsg(r.status === 409 ? 'pwexists' : r.status === 401 ? 'pwwrong' : r.status === 429 ? 'pwtoomany' : r.status === 400 ? (j.error === 'badpass' ? 'pwbadpass' : 'pwbadname') : 'pwerr'); return; }
+      var email = String(j.email || '').toLowerCase();
+      if (!email || !j.session) { setMsg('pwerr'); return; }
+      if (PBOX_ALLOWED_EMAILS.length && PBOX_ALLOWED_EMAILS.map(function (x) { return String(x).toLowerCase(); }).indexOf(email) < 0) { setMsg('notallowed'); return; }
+      SRV.sess = j.session; sl(srvKeyFor(email), j.session);
+      var pwBox = $('authPass'); if (pwBox) pwBox.value = '';
+
+      var deletedNow = gl('pboxDeletedEmail') === email;           // deleted here a moment ago: start fresh
+      if (deletedNow) { try { var ff = await tFind(); if (ff) await tDelete(ff.id); } catch (e) {} rl('pboxDeletedEmail'); try { rl('phoneboxSyncMeta'); } catch (e) {} }
+
+      var swapped = swapAccount(email);
+      addKnown(email);
+      sl(AUTH_KEY, JSON.stringify({ email: email, name: name, picture: '', at: Date.now() }));
+      hideGate(); setMsg('');
+      try { if (typeof syncRenderUI === 'function') syncRenderUI(); } catch (e) {}
+      var res = ''; try { res = await v2Initial(); } catch (e) {}
+      if (res === 'applied') return;
+      if (swapped) { setTimeout(function () { location.reload(); }, 400); return; }
+      window.pboxFlushQ();
+      try { if (localStorage.getItem('phoneboxSetupComplete') && typeof showPage === 'function') showPage('home'); } catch (e) {}
+    } catch (e) {
+      setMsg('pwnoserver');
+    } finally {
+      authBusy = false;
+    }
   };
 
   async function onAuthToken(resp) {
@@ -7343,7 +7412,7 @@ document.addEventListener('keydown', e => {
   function canSync() { return SRV.base ? !!SRV.sess : tokenLive(); }
   async function srvFetch(p, opt) {
     var r = await fetch(SRV.base + p, Object.assign({ headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SRV.sess } }, opt || {}));
-    if (r.status === 401) { SRV.sess = ''; var k = srvSessKey(); if (k) rl(k); throw new Error('token'); }
+    if (r.status === 401) { var me = session(); SRV.sess = ''; var k = srvSessKey(); if (k) rl(k); if (me && /@pbox\.local$/.test(me.email)) { rl(AUTH_KEY); showGate(); } throw new Error('token'); }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   }
