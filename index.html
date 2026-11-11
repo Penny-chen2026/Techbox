@@ -724,8 +724,8 @@ if(!window.pboxSignedIn())document.documentElement.classList.add('pbox-needs-log
     </div>
     <div class="auth-or" id="authOr"></div>
     <div class="auth-pw">
-      <input type="text" id="authUser" class="lang-search" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="20">
-      <input type="password" id="authPass" class="lang-search" autocomplete="current-password" maxlength="128" onkeydown="if(event.key==='Enter')pboxPwAuth('login')">
+      <input type="text" id="authUser" name="pbox-u-field" class="lang-search" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="20">
+      <input type="password" id="authPass" name="pbox-p-field" class="lang-search" autocomplete="new-password" maxlength="128" onkeydown="if(event.key==='Enter')pboxPwAuth('login')">
       <button class="btn auth-btn" id="authPwGenBtn" type="button" onclick="pboxPwGen()" style="padding:9px 14px;font-size:14px"></button>
       <button class="btn btn-primary auth-btn" id="authPwLoginBtn" onclick="pboxPwAuth('login')"></button>
       <button class="btn auth-btn" id="authPwSigninBtn" onclick="pboxPwAuth('signin')"></button>
@@ -7103,7 +7103,7 @@ document.addEventListener('keydown', e => {
     var s = am(k);
     if (typeof cloudBubble === 'function') cloudBubble('🔐', s); else alert(s);
   }
-  function showGate() { document.documentElement.classList.add('pbox-needs-login'); renderGate(); }
+  function showGate() { document.documentElement.classList.add('pbox-needs-login'); renderGate(); try { pwWipe(true); } catch (e) {} }
   function hideGate() { document.documentElement.classList.remove('pbox-needs-login'); }
   function renderGate() {
     var set = function (id, k) { var el = $(id); if (el) el.textContent = am(k); };
@@ -7166,12 +7166,26 @@ document.addEventListener('keydown', e => {
     tc.requestAccessToken({ prompt: 'select_account' });
   };
 
+  // Both login boxes must start empty. Browsers like to auto-fill saved logins here, so anything the user did not type is wiped.
+  var pwTyped = false;
+  function pwBoxEvt(e) { var t = e.target && e.target.id; if (t === 'authUser' || t === 'authPass') { if (e.type !== 'input' || (e.isTrusted && /^(insertText|insertFromPaste|deleteContent|insertCompositionText)/.test(e.inputType || ''))) pwTyped = true; } }
+  ['keydown', 'paste', 'input', 'compositionstart'].forEach(function (n) { document.addEventListener(n, pwBoxEvt, true); });
+  function pwWipe(force) {
+    if (pwTyped && !force) return;
+    ['authUser', 'authPass'].forEach(function (id) { var el = $(id); if (el && el.value) el.value = ''; });
+    var pb = $('authPass'); if (pb) pb.type = 'password';
+    if (force) pwTyped = false;
+  }
+  window.pboxPwWipe = pwWipe;
+  window.addEventListener('pageshow', function () { pwWipe(false); });
+  [0, 150, 400, 800, 1500, 2500, 4000].forEach(function (ms) { setTimeout(function () { pwWipe(false); }, ms); });
+
   // Random strong password: 20 characters from a large alphabet (no look-alike characters), made by the browser's secure random source.
   window.pboxPwGen = function () {
     var A = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*-_=+', out;
     function pick() { var a = new Uint32Array(1), lim = Math.floor(4294967296 / A.length) * A.length; do { crypto.getRandomValues(a); } while (a[0] >= lim); return A.charAt(a[0] % A.length); }
     do { out = ''; for (var i = 0; i < 20; i++) out += pick(); } while (!/[a-z]/.test(out) || !/[A-Z]/.test(out) || !/[2-9]/.test(out) || !/[^A-Za-z0-9]/.test(out));
-    var pb = $('authPass'); if (pb) { pb.value = out; pb.type = 'text'; pb.setAttribute('autocomplete', 'new-password'); }
+    pwTyped = true; var pb = $('authPass'); if (pb) { pb.value = out; pb.type = 'text'; pb.setAttribute('autocomplete', 'new-password'); }
     var h = $('authPwHint'), done = function (k) { if (h) h.textContent = am(k); setMsg(''); };
     try { navigator.clipboard.writeText(out).then(function () { done('pwgenok'); }, function () { done('pwgenok2'); }); } catch (e) { done('pwgenok2'); }
   };
@@ -7195,7 +7209,7 @@ document.addEventListener('keydown', e => {
       if (!email || !j.session) { setMsg('pwerr'); return; }
       if (PBOX_ALLOWED_EMAILS.length && PBOX_ALLOWED_EMAILS.map(function (x) { return String(x).toLowerCase(); }).indexOf(email) < 0) { setMsg('notallowed'); return; }
       SRV.sess = j.session; sl(srvKeyFor(email), j.session);
-      var pwBox = $('authPass'); if (pwBox) { pwBox.value = ''; pwBox.type = 'password'; }
+      pwWipe(true);
 
       var deletedNow = gl('pboxDeletedEmail') === email;           // deleted here a moment ago: start fresh
       if (deletedNow) { try { var ff = await tFind(); if (ff) await tDelete(ff.id); } catch (e) {} rl('pboxDeletedEmail'); try { rl('phoneboxSyncMeta'); } catch (e) {} }
